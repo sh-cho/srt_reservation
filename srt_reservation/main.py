@@ -1,19 +1,17 @@
-# -*- coding: utf-8 -*-
 import os
 import time
 from random import randint
 from datetime import datetime
 from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.select import Select
-from selenium.common.exceptions import ElementClickInterceptedException, StaleElementReferenceException, WebDriverException
+from selenium.common.exceptions import ElementClickInterceptedException, StaleElementReferenceException
 
-from srt_reservation.exceptions import InvalidStationNameError, InvalidDateError, InvalidDateFormatError, InvalidTimeFormatError
+from srt_reservation.exceptions import InvalidStationNameError, InvalidDateError, InvalidDateFormatError
 from srt_reservation.validation import station_list
 
-chromedriver_path = r'C:\workspace\chromedriver.exe'
+# chromedriver_path = r'C:\workspace\chromedriver.exe'
 
 class SRT:
     def __init__(self, dpt_stn, arr_stn, dpt_dt, dpt_tm, num_trains_to_check=2, want_reserve=False):
@@ -59,13 +57,14 @@ class SRT:
         self.login_psw = login_psw
 
     def run_driver(self):
-        try:
-            self.driver = webdriver.Chrome(executable_path=chromedriver_path)
-        except WebDriverException:
-            self.driver = webdriver.Chrome(ChromeDriverManager().install())
+        # Download chromedriver locally
+        # https://googlechromelabs.github.io/chrome-for-testing/
+        chrome_service = webdriver.ChromeService(executable_path = '/Users/seonghyeoncho/Downloads/chromedriver-mac-arm64/chromedriver')
+        chrome_service.start()
+        self.driver = webdriver.Chrome(service=chrome_service)
 
     def login(self):
-        self.driver.get('https://etk.srail.co.kr/cmc/01/selectLoginForm.do')
+        self.driver.get('https://etk.srail.kr/cmc/01/selectLoginForm.do')
         self.driver.implicitly_wait(15)
         self.driver.find_element(By.ID, 'srchDvNm01').send_keys(str(self.login_id))
         self.driver.find_element(By.ID, 'hmpgPwdCphd01').send_keys(str(self.login_psw))
