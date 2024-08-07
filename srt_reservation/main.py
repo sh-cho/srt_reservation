@@ -6,7 +6,7 @@ from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.select import Select
-from selenium.common.exceptions import ElementClickInterceptedException, StaleElementReferenceException
+from selenium.common.exceptions import ElementClickInterceptedException, StaleElementReferenceException, NoSuchElementException
 
 from srt_reservation.exceptions import InvalidStationNameError, InvalidDateError, InvalidDateFormatError
 from srt_reservation.validation import station_list
@@ -14,7 +14,7 @@ from srt_reservation.validation import station_list
 # chromedriver_path = r'C:\workspace\chromedriver.exe'
 
 class SRT:
-    def __init__(self, dpt_stn, arr_stn, dpt_dt, dpt_tm, num_trains_to_check=2, want_reserve=False):
+    def __init__(self, dpt_stn, arr_stn, dpt_dt, dpt_tm, num_trains_to_check=1, want_reserve=False):
         """
         :param dpt_stn: SRT 출발역
         :param arr_stn: SRT 도착역
@@ -61,7 +61,9 @@ class SRT:
         # https://googlechromelabs.github.io/chrome-for-testing/
         chrome_service = webdriver.ChromeService(executable_path = '/Users/seonghyeoncho/Downloads/chromedriver-mac-arm64/chromedriver')
         chrome_service.start()
-        self.driver = webdriver.Chrome(service=chrome_service)
+        chrome_options = webdriver.ChromeOptions()
+        chrome_options.add_argument("--disable-popup-blocking")
+        self.driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
 
     def login(self):
         self.driver.get('https://etk.srail.kr/cmc/01/selectLoginForm.do')
@@ -159,10 +161,21 @@ class SRT:
     def check_result(self):
         while True:
             for i in range(1, self.num_trains_to_check+1):
+                netfunnel_iter = 0
+                while True:
+                    try:
+                        self.driver.find_element(By.ID, "NetFunnel_Loading_Popup")
+                        netfunnel_iter += 1
+                        print(f"{netfunnel_iter} ", end="", flush=True)
+                        time.sleep(1)
+                    except NoSuchElementException:
+                        break
+                print()
+
                 try:
                     standard_seat = self.driver.find_element(By.CSS_SELECTOR, f"#result-form > fieldset > div.tbl_wrap.th_thead > table > tbody > tr:nth-child({i}) > td:nth-child(7)").text
                     reservation = self.driver.find_element(By.CSS_SELECTOR, f"#result-form > fieldset > div.tbl_wrap.th_thead > table > tbody > tr:nth-child({i}) > td:nth-child(8)").text
-                except StaleElementReferenceException:
+                except (StaleElementReferenceException, NoSuchElementException) as e:
                     standard_seat = "매진"
                     reservation = "매진"
 
