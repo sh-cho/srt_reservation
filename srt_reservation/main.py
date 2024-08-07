@@ -189,7 +189,7 @@ class SRT:
                 return self.driver
 
             else:
-                time.sleep(randint(2, 4))
+                time.sleep(randint(6, 8))
                 self.refresh_result()
 
     def run(self, login_id, login_psw):
