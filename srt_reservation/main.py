@@ -7,14 +7,23 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.select import Select
 from selenium.common.exceptions import ElementClickInterceptedException, StaleElementReferenceException, NoSuchElementException
+import telegram
 
 from srt_reservation.exceptions import InvalidStationNameError, InvalidDateError, InvalidDateFormatError
 from srt_reservation.validation import station_list
 
-# chromedriver_path = r'C:\workspace\chromedriver.exe'
-
 class SRT:
-    def __init__(self, dpt_stn, arr_stn, dpt_dt, dpt_tm, num_trains_to_check=1, want_reserve=False):
+    def __init__(
+            self,
+            dpt_stn,
+            arr_stn,
+            dpt_dt,
+            dpt_tm,
+            num_trains_to_check=1,
+            want_reserve=False,
+            tg_bot: telegram.Bot | None = None,
+            tg_chat_id: str | None = None
+        ):
         """
         :param dpt_stn: SRT 출발역
         :param arr_stn: SRT 도착역
@@ -22,9 +31,11 @@ class SRT:
         :param dpt_tm: 출발 시간 hh 형태, 반드시 짝수 ex) 06, 08, 14, ...
         :param num_trains_to_check: 검색 결과 중 예약 가능 여부 확인할 기차의 수 ex) 2일 경우 상위 2개 확인
         :param want_reserve: 예약 대기가 가능할 경우 선택 여부
+        :param tg_bot: Telegram bot 객체 (예약 성공시 메시지 전송)
+        :param tg_chat_id: Telegram chat id (예약 성공시 메시지 전송)
         """
-        self.login_id = None
-        self.login_psw = None
+        self.user_id = None
+        self.user_pw = None
 
         self.dpt_stn = dpt_stn
         self.arr_stn = arr_stn
@@ -33,6 +44,14 @@ class SRT:
 
         self.num_trains_to_check = num_trains_to_check
         self.want_reserve = want_reserve
+
+        self.tg_bot = tg_bot
+        self.tg_chat_id = tg_chat_id
+
+        # self.use_telegram_bot: bool = (telegram_bot_token is not None) and (telegram_chat_id is not None)
+        # if self.use_telegram_bot:
+        #     self.telegram_bot = telegram.Bot(token=telegram_bot_token)
+
         self.driver = None
 
         self.is_booked = False  # 예약 완료 되었는지 확인용
@@ -52,9 +71,9 @@ class SRT:
         except ValueError:
             raise InvalidDateError("날짜가 잘못 되었습니다. YYYYMMDD 형식으로 입력해주세요.")
 
-    def set_log_info(self, login_id, login_psw):
-        self.login_id = login_id
-        self.login_psw = login_psw
+    def set_login_info(self, user_id, user_pw):
+        self.user_id = user_id
+        self.user_pw = user_pw
 
     def run_driver(self):
         # Download chromedriver locally
@@ -68,8 +87,8 @@ class SRT:
     def login(self):
         self.driver.get('https://etk.srail.kr/cmc/01/selectLoginForm.do')
         self.driver.implicitly_wait(15)
-        self.driver.find_element(By.ID, 'srchDvNm01').send_keys(str(self.login_id))
-        self.driver.find_element(By.ID, 'hmpgPwdCphd01').send_keys(str(self.login_psw))
+        self.driver.find_element(By.ID, 'srchDvNm01').send_keys(str(self.user_id))
+        self.driver.find_element(By.ID, 'hmpgPwdCphd01').send_keys(str(self.user_pw))
         self.driver.find_element(By.XPATH, '//*[@id="login-form"]/fieldset/div[1]/div[1]/div[2]/div/div[2]/input').click()
         self.driver.implicitly_wait(5)
         return self.driver
@@ -114,7 +133,7 @@ class SRT:
         self.driver.implicitly_wait(5)
         time.sleep(1)
 
-    def book_ticket(self, standard_seat, i):
+    async def book_ticket(self, standard_seat, i):
         # standard_seat는 일반석 검색 결과 텍스트
         
         if "예약하기" in standard_seat:
@@ -136,6 +155,9 @@ class SRT:
             if self.driver.find_elements(By.ID, 'isFalseGotoMain'):
                 self.is_booked = True
                 print("예약 성공")
+                if self.tg_bot and self.tg_chat_id:
+                    async with self.tg_bot:
+                        await self.tg_bot.send_message(chat_id=self.tg_chat_id, text="예약 성공")
                 return self.driver
             else:
                 print("잔여석 없음. 다시 검색")
@@ -158,7 +180,7 @@ class SRT:
             self.is_booked = True
             return self.is_booked
 
-    def check_result(self):
+    async def check_result(self):
         while True:
             for i in range(1, self.num_trains_to_check+1):
                 netfunnel_iter = 0
@@ -179,7 +201,7 @@ class SRT:
                     standard_seat = "매진"
                     reservation = "매진"
 
-                if self.book_ticket(standard_seat, i):
+                if await self.book_ticket(standard_seat, i):
                     return self.driver
 
                 if self.want_reserve:
@@ -192,18 +214,9 @@ class SRT:
                 time.sleep(randint(6, 8))
                 self.refresh_result()
 
-    def run(self, login_id, login_psw):
+    async def run(self, user_id, user_pw):
         self.run_driver()
-        self.set_log_info(login_id, login_psw)
+        self.set_login_info(user_id, user_pw)
         self.login()
         self.go_search()
-        self.check_result()
-
-#
-# if __name__ == "__main__":
-#     srt_id = os.environ.get('srt_id')
-#     srt_psw = os.environ.get('srt_psw')
-#
-#     srt = SRT("동탄", "동대구", "20220917", "08")
-#     srt.run(srt_id, srt_psw)
-
+        await self.check_result()
